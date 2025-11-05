@@ -65,19 +65,19 @@ int main(int argc, char *argv[]) {
   const unsigned warp_size = device.getAttribute(CU_DEVICE_ATTRIBUTE_WARP_SIZE);
 
   // tuning parameters
-  const unsigned BLOCK_TILE_SIZE_M = 16;
-  const unsigned BLOCK_TILE_SIZE_N = 16;
-  const unsigned WARP_TILE_SIZE_M = 16;
-  const unsigned WARP_TILE_SIZE_N = 16;
-  const unsigned TILE_SIZE_K = 16;
+  const unsigned M_PER_BLOCK = 16;
+  const unsigned N_PER_BLOCK = 16;
+  const unsigned M_PER_WARP = 16;
+  const unsigned N_PER_WARP = 16;
+  const unsigned K_PER_BUFFER = 16;
 
   // fixed parameters
   const unsigned M_WMMA = 16;
   const unsigned N_WMMA = 16;
   const unsigned K_WMMA = 16;
 
-  dim3 grid{ccglib::helper::ceildiv(global_n, BLOCK_TILE_SIZE_N), ccglib::helper::ceildiv(global_m, BLOCK_TILE_SIZE_M), 1};
-  dim3 threads{warp_size, ccglib::helper::ceildiv(WARP_TILE_SIZE_N, N_WMMA), ccglib::helper::ceildiv(WARP_TILE_SIZE_M, M_WMMA)};
+  dim3 grid{ccglib::helper::ceildiv(global_n, N_PER_BLOCK), ccglib::helper::ceildiv(global_m, M_PER_BLOCK), 1};
+  dim3 threads{warp_size, ccglib::helper::ceildiv(N_PER_WARP, N_WMMA), ccglib::helper::ceildiv(M_PER_WARP, M_WMMA)};
 
   std::cout << "block size: " << threads.x << " " << threads.y << " " << threads.z << std::endl;
   std::cout << "grid size: " << grid.x << " " << grid.y << " " << grid.z << std::endl;
@@ -95,11 +95,11 @@ int main(int argc, char *argv[]) {
     "-DM_GLOBAL=" + std::to_string(global_m) + "UL",
     "-DN_GLOBAL=" + std::to_string(global_n) + "UL",
     "-DK_GLOBAL=" + std::to_string(global_k) + "UL",
-    "-DBLOCK_TILE_SIZE_M=" + std::to_string(BLOCK_TILE_SIZE_M),
-    "-DBLOCK_TILE_SIZE_N=" + std::to_string(BLOCK_TILE_SIZE_N),
-    "-DWARP_TILE_SIZE_M=" + std::to_string(WARP_TILE_SIZE_M),
-    "-DWARP_TILE_SIZE_N=" + std::to_string(WARP_TILE_SIZE_N),
-    "-DTILE_SIZE_K=" + std::to_string(TILE_SIZE_K),
+    "-DM_PER_BLOCK=" + std::to_string(M_PER_BLOCK),
+    "-DN_PER_BLOCK=" + std::to_string(N_PER_BLOCK),
+    "-DM_PER_WARP=" + std::to_string(M_PER_WARP),
+    "-DN_PER_WARP=" + std::to_string(N_PER_WARP),
+    "-DK_PER_BUFFER=" + std::to_string(K_PER_BUFFER),
     "-DM_WMMA=" + std::to_string(M_WMMA),
     "-DN_WMMA=" + std::to_string(N_WMMA),
     "-DK_WMMA=" + std::to_string(K_WMMA)
