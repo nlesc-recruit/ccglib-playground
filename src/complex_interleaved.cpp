@@ -1,11 +1,12 @@
 
+#include <ccglib/common/helper.h>
+
+#include <ccglib/ccglib.hpp>
 #include <complex>
 #include <functional>
 #include <iostream>
 #include <random>
 
-#include <ccglib/common/helper.h>
-#include <ccglib/ccglib.hpp>
 #include <cudawrappers/cu.hpp>
 #include <cudawrappers/nvrtc.hpp>
 
@@ -75,6 +76,8 @@ int main(int argc, char *argv[]) {
   const unsigned N_WMMA = 16;
   const unsigned K_WMMA = 16;
 
+  const unsigned TILES_K = ccglib::helper::ceildiv(global_k, K_PER_BUFFER);
+
   dim3 grid{ccglib::helper::ceildiv(global_n, N_PER_BLOCK), ccglib::helper::ceildiv(global_m, M_PER_BLOCK), batch_size};
   dim3 threads{warp_size, ccglib::helper::ceildiv(N_PER_WARP, N_WMMA), ccglib::helper::ceildiv(M_PER_WARP, M_WMMA)};
 
@@ -89,7 +92,6 @@ int main(int argc, char *argv[]) {
     "-arch=" + arch,
 #endif
     "-I" + include_path,
-    "-DCOMPLEX=" + std::to_string(COMPLEX),
     "-DWARP_SIZE=" + std::to_string(warp_size),
     "-DM_GLOBAL=" + std::to_string(global_m) + "UL",
     "-DN_GLOBAL=" + std::to_string(global_n) + "UL",
@@ -99,6 +101,7 @@ int main(int argc, char *argv[]) {
     "-DM_PER_WARP=" + std::to_string(M_PER_WARP),
     "-DN_PER_WARP=" + std::to_string(N_PER_WARP),
     "-DK_PER_BUFFER=" + std::to_string(K_PER_BUFFER),
+    "-DTILES_K=" + std::to_string(TILES_K),
     "-DM_WMMA=" + std::to_string(M_WMMA),
     "-DN_WMMA=" + std::to_string(N_WMMA),
     "-DK_WMMA=" + std::to_string(K_WMMA)
