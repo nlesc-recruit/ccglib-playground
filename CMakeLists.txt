@@ -27,9 +27,8 @@ endif()
 
 FetchContent_Declare(
   ccglib
-  SOURCE_DIR /home/leon/src/ccglib)
-  # GIT_REPOSITORY https://github.com/nlesc-recruit/ccglib
-  # GIT_TAG ${CCGLIB_GIT_REVISION})
+  GIT_REPOSITORY https://github.com/nlesc-recruit/ccglib
+  GIT_TAG ${CCGLIB_GIT_REVISION})
 FetchContent_MakeAvailable(ccglib)
 
 add_executable(complex_interleaved src/complex_interleaved.cpp)
