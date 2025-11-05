@@ -10,12 +10,12 @@
 
 #include "kernel_complex_interleaved.cu.o.h"
 
-template<typename T>
-inline T align(T a, T b) {
+template <typename T> inline T align(T a, T b) {
   return ccglib::helper::ceildiv(a, b) * b;
 }
 
-float run(cu::Stream &stream, ccglib::pipeline::Pipeline &pipeline, cu::DeviceMemory &d_a, cu::DeviceMemory &d_b, cu::DeviceMemory &d_c) {
+float run(cu::Stream &stream, ccglib::pipeline::Pipeline &pipeline,
+          cu::DeviceMemory &d_a, cu::DeviceMemory &d_b, cu::DeviceMemory &d_c) {
   // run the kernels
   cu::Event start, end;
   stream.record(start);
@@ -36,25 +36,25 @@ int main(int argc, char *argv[]) {
   // const unsigned global_m = 8192;
   // const unsigned global_n = 8192;
   // const unsigned global_k = 8192;
-  const unsigned global_m = 16;
-  const unsigned global_n = 16;
+  const unsigned global_m = 128;
+  const unsigned global_n = 128;
   const unsigned global_k = 16;
   const unsigned batch_size = 1;
   const unsigned COMPLEX = 2;
   const unsigned REAL = 0;
   const unsigned IMAG = 1;
 
-  const double ops = 8ULL * 1e-9 * global_m * global_n * global_k;
+  const double ops = 8ULL * 1e-9 * global_m * global_n * global_k * batch_size;
 
   using Tin = half;
   using Tout = float;
 
   const size_t bytes_a =
-      sizeof(Tin) * batch_size * COMPLEX * global_m * global_k;
+      sizeof(Tin) * batch_size * global_m * global_k * COMPLEX;
   const size_t bytes_b =
-      sizeof(Tin) * batch_size * COMPLEX * global_n * global_k;
+      sizeof(Tin) * batch_size * global_n * global_k * COMPLEX;
   const size_t bytes_c =
-      sizeof(Tout) * batch_size * COMPLEX * global_m * global_n;
+      sizeof(Tout) * batch_size * global_m * global_n * COMPLEX;
 
   // Build the experimental kernel
   const std::string kernel_name = "wmma_complex_gemm_basic_interleaved";
@@ -65,8 +65,8 @@ int main(int argc, char *argv[]) {
   const unsigned warp_size = device.getAttribute(CU_DEVICE_ATTRIBUTE_WARP_SIZE);
 
   // tuning parameters
-  const unsigned M_PER_BLOCK = 16;
-  const unsigned N_PER_BLOCK = 16;
+  const unsigned M_PER_BLOCK = 64;
+  const unsigned N_PER_BLOCK = 64;
   const unsigned M_PER_WARP = 16;
   const unsigned N_PER_WARP = 16;
   const unsigned K_PER_BUFFER = 16;
@@ -76,11 +76,15 @@ int main(int argc, char *argv[]) {
   const unsigned N_WMMA = 16;
   const unsigned K_WMMA = 16;
 
-  dim3 grid{ccglib::helper::ceildiv(global_n, N_PER_BLOCK), ccglib::helper::ceildiv(global_m, M_PER_BLOCK), 1};
-  dim3 threads{warp_size, ccglib::helper::ceildiv(N_PER_WARP, N_WMMA), ccglib::helper::ceildiv(M_PER_WARP, M_WMMA)};
+  dim3 grid{ccglib::helper::ceildiv(global_n, N_PER_BLOCK),
+            ccglib::helper::ceildiv(global_m, M_PER_BLOCK), batch_size};
+  dim3 threads{warp_size, ccglib::helper::ceildiv(N_PER_WARP, N_WMMA),
+               ccglib::helper::ceildiv(M_PER_WARP, M_WMMA)};
 
-  std::cout << "block size: " << threads.x << " " << threads.y << " " << threads.z << std::endl;
-  std::cout << "grid size: " << grid.x << " " << grid.y << " " << grid.z << std::endl;
+  std::cout << "block size: " << threads.x << " " << threads.y << " "
+            << threads.z << std::endl;
+  std::cout << "grid size: " << grid.x << " " << grid.y << " " << grid.z
+            << std::endl;
 
   std::vector<std::string> options = {
     "-std=c++17",
@@ -105,7 +109,8 @@ int main(int argc, char *argv[]) {
     "-DK_WMMA=" + std::to_string(K_WMMA)
   };
 
-  nvrtc::Program program(kernel_complex_interleaved_source, "kernel_complex_interleaved.cu");
+  nvrtc::Program program(kernel_complex_interleaved_source,
+                         "kernel_complex_interleaved.cu");
   try {
     program.compile(options);
   } catch (nvrtc::Error &error) {
@@ -128,10 +133,10 @@ int main(int argc, char *argv[]) {
   // Create input data
   auto generator = std::bind(std::uniform_real_distribution<float>(-10, 10),
                              std::default_random_engine());
-  for (unsigned i = 0; i < global_m * global_k * COMPLEX; i ++) {
+  for (unsigned i = 0; i < batch_size * global_m * global_k * COMPLEX; i++) {
     static_cast<Tin *>(h_a)[i] = static_cast<Tin>(generator());
   }
-  for (unsigned i = 0; i < global_n * global_k * COMPLEX; i ++) {
+  for (unsigned i = 0; i < batch_size * global_n * global_k * COMPLEX; i++) {
     static_cast<Tin *>(h_b)[i] = static_cast<Tin>(generator());
   }
 
@@ -151,7 +156,8 @@ int main(int argc, char *argv[]) {
 
   cu::Event start, end;
   stream.record(start);
-  stream.launchKernel(function, grid.x, grid.y, grid.z, threads.x, threads.y, threads.z, 0, parameters);
+  stream.launchKernel(function, grid.x, grid.y, grid.z, threads.x, threads.y,
+                      threads.z, 0, parameters);
   stream.record(end);
   stream.synchronize();
 
@@ -167,17 +173,16 @@ int main(int argc, char *argv[]) {
   std::cout << "TFLOPS: " << tflops << std::endl;
 
   // compare to existing ccglib pipelines
-  ccglib::pipeline::Pipeline pipeline_opt_planar(batch_size, global_m, global_n, global_k, device, stream,
-                                                 // input/output complex axis location
-                                                 ccglib::complex_planar, ccglib::complex_planar,
-                                                 // a, b, c mem order
-                                                 ccglib::mma::row_major, ccglib::mma::col_major, ccglib::mma::row_major,
-                                                 // input/output precision
-                                                 ccglib::float16, ccglib::float32,
-                                                 // kernel variant
-                                                 ccglib::mma::opt
-                                                 );
-
+  ccglib::pipeline::Pipeline pipeline_opt_planar(
+      batch_size, global_m, global_n, global_k, device, stream,
+      // input/output complex axis location
+      ccglib::complex_planar, ccglib::complex_planar,
+      // a, b, c mem order
+      ccglib::mma::row_major, ccglib::mma::col_major, ccglib::mma::row_major,
+      // input/output precision
+      ccglib::float16, ccglib::float32,
+      // kernel variant
+      ccglib::mma::opt);
 
   d_c.zero(bytes_c);
   runtime = run(stream, pipeline_opt_planar, d_a, d_b, d_c);
@@ -188,16 +193,16 @@ int main(int argc, char *argv[]) {
   std::cout << "runtime: " << runtime << " ms" << std::endl;
   std::cout << "TFLOPS: " << tflops << std::endl;
 
-  ccglib::pipeline::Pipeline pipeline_opt_interleaved(batch_size, global_m, global_n, global_k, device, stream,
-                                                      // input/output complex axis location
-                                                      ccglib::complex_interleaved, ccglib::complex_interleaved,
-                                                      // a, b, c mem order
-                                                      ccglib::mma::row_major, ccglib::mma::col_major, ccglib::mma::row_major,
-                                                      // input/output precision
-                                                      ccglib::float16, ccglib::float32,
-                                                      // kernel variant
-                                                      ccglib::mma::opt
-                                                      );
+  ccglib::pipeline::Pipeline pipeline_opt_interleaved(
+      batch_size, global_m, global_n, global_k, device, stream,
+      // input/output complex axis location
+      ccglib::complex_interleaved, ccglib::complex_interleaved,
+      // a, b, c mem order
+      ccglib::mma::row_major, ccglib::mma::col_major, ccglib::mma::row_major,
+      // input/output precision
+      ccglib::float16, ccglib::float32,
+      // kernel variant
+      ccglib::mma::opt);
 
   d_c.zero(bytes_c);
   runtime = run(stream, pipeline_opt_interleaved, d_a, d_b, d_c);
@@ -213,15 +218,16 @@ int main(int argc, char *argv[]) {
 
   // Compare pipeline interleaved to new kernel
   unsigned errs = 0;
-  for (unsigned m = 0; m < global_m; m ++ ) {
+  for (unsigned m = 0; m < global_m; m++) {
     for (unsigned n = 0; n < global_n; n++) {
-      if (errs > 10) {
-          break;
-      }
       const unsigned idx = n * COMPLEX + m * global_n * COMPLEX;
-      const std::complex<Tout> value{static_cast<Tout *>(h_c)[idx + REAL], static_cast<Tout *>(h_c)[idx + IMAG]};
-      const std::complex<Tout> value_ref{static_cast<Tout *>(h_c_ref)[idx + REAL], static_cast<Tout *>(h_c_ref)[idx + IMAG]};
-      const Tout diff = std::max(std::abs(value.real() - value_ref.real()), std::abs(value.imag() - value_ref.imag()));
+      const std::complex<Tout> value{static_cast<Tout *>(h_c)[idx + REAL],
+                                     static_cast<Tout *>(h_c)[idx + IMAG]};
+      const std::complex<Tout> value_ref{
+          static_cast<Tout *>(h_c_ref)[idx + REAL],
+          static_cast<Tout *>(h_c_ref)[idx + IMAG]};
+      const Tout diff = std::max(std::abs(value.real() - value_ref.real()),
+                                 std::abs(value.imag() - value_ref.imag()));
       if (diff > .1) {
         errs++;
       }
@@ -235,17 +241,22 @@ int main(int argc, char *argv[]) {
     std::cout << "Result ok" << std::endl;
   }
 
-  if (true) {
+  if (errs > 0) {
     std::cout << std::endl;
-    for (unsigned m = 0; m < global_m; m ++ ) {
+    for (unsigned m = 0; m < global_m; m++) {
+      // print only first and last row
+      if (m != 0 && m != (global_m - 1))
+        continue;
       for (unsigned n = 0; n < global_n; n++) {
-          const unsigned idx = n * COMPLEX + m * global_n * COMPLEX;
-          std::cout << std::setw(12) << static_cast<Tout *>(h_c)[idx + REAL] << " + " << static_cast<Tout *>(h_c)[idx + IMAG] << "i";
-          std::cout << "   ";
-          std::cout << std::setw(12) << static_cast<Tout *>(h_c_ref)[idx + REAL] << " + " << static_cast<Tout *>(h_c_ref)[idx + IMAG] << "i";
-          std::cout << std::endl;
+        const unsigned idx = n * COMPLEX + m * global_n * COMPLEX;
+        std::cout << std::setw(12) << static_cast<Tout *>(h_c)[idx + REAL]
+                  << " + " << static_cast<Tout *>(h_c)[idx + IMAG] << "i";
+        std::cout << "   ";
+        std::cout << std::setw(12) << static_cast<Tout *>(h_c_ref)[idx + REAL]
+                  << " + " << static_cast<Tout *>(h_c_ref)[idx + IMAG] << "i";
+        std::cout << std::endl;
       }
-    break;
+      std::cout << std::endl;
     }
   }
 }
