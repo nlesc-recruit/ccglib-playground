@@ -15,17 +15,23 @@ using B_eff_t = Tin[N_GLOBAL * 2][K_GLOBAL * COMPLEX];
 using C_eff_t = Tout[M_GLOBAL][N_GLOBAL * COMPLEX];
 
 extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t A, const B_t B) {
-    __shared__ Tin B_s[N_GLOBAL][2][K_GLOBAL][COMPLEX];
-    for (unsigned k = 0; k < K_GLOBAL; k++) {
-        for (unsigned n = 0; n < N_GLOBAL; n++) {
-            B_s[n][0][k][REAL] = B[n][k][REAL];
-            B_s[n][0][k][IMAG] = -B[n][k][IMAG];
+    const unsigned tid = blockDim.y * blockDim.x * threadIdx.z + blockDim.x * threadIdx.y + threadIdx.x;
+    const unsigned block_size = blockDim.x * blockDim.y * blockDim.z;
 
-            B_s[n][1][k][REAL] = B[n][k][IMAG];
-            B_s[n][1][k][IMAG] = B[n][k][REAL];
-        }
+    __shared__ Tin B_s[N_GLOBAL][2][K_GLOBAL][COMPLEX];
+
+    for (unsigned i = tid; i < N_GLOBAL * K_GLOBAL; i += block_size) {
+        const unsigned k = i % K_GLOBAL;
+        const unsigned n = i / K_GLOBAL;
+
+        B_s[n][0][k][REAL] = B[n][k][REAL];
+        B_s[n][0][k][IMAG] = -B[n][k][IMAG];
+
+        B_s[n][1][k][REAL] = B[n][k][IMAG];
+        B_s[n][1][k][IMAG] = B[n][k][REAL];
     }
     __syncthreads();
+
     // pretend we do a matmul with N_ = N * 2 and K_ = K * COMPLEX;
     const unsigned M_ = M_GLOBAL;  // unchanged
     const unsigned N_ = N_GLOBAL * 2;
