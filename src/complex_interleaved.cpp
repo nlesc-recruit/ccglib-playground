@@ -33,9 +33,9 @@ int main(int argc, char *argv[]) {
   cu::Stream stream;
 
   // data size and type
-//   const unsigned global_m = 8192;
-//   const unsigned global_n = 8192;
-//   const unsigned global_k = 8192;
+  // const unsigned global_m = 8192;
+  // const unsigned global_n = 8192;
+  // const unsigned global_k = 8192;
   const unsigned global_m = 16;
   const unsigned global_n = 16;
   const unsigned global_k = 16;

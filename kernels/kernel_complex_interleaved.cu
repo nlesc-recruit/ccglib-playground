@@ -18,7 +18,16 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
     const unsigned tid = blockDim.y * blockDim.x * threadIdx.z + blockDim.x * threadIdx.y + threadIdx.x;
     const unsigned block_size = blockDim.x * blockDim.y * blockDim.z;
 
+    __shared__ Tin A_s[M_GLOBAL][K_GLOBAL][COMPLEX];
     __shared__ Tin B_s[N_GLOBAL][2][K_GLOBAL][COMPLEX];
+
+    for (unsigned i = tid; i < M_GLOBAL * K_GLOBAL * COMPLEX; i+= block_size) {
+        const unsigned c = i % COMPLEX;
+        const unsigned k = (i / COMPLEX) % K_GLOBAL;
+        const unsigned m = (i / (COMPLEX * K_GLOBAL));
+
+        A_s[m][k][c] = A[m][k][c];
+    }
 
     for (unsigned i = tid; i < N_GLOBAL * K_GLOBAL; i += block_size) {
         const unsigned k = i % K_GLOBAL;
@@ -37,7 +46,7 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
     const unsigned N_ = N_GLOBAL * 2;
     const unsigned K_ = K_GLOBAL * COMPLEX;
 
-    const A_eff_t *A_ = reinterpret_cast<const A_eff_t *>(A);
+    const A_eff_t *A_ = reinterpret_cast<const A_eff_t *>(A_s);
     const B_eff_t *B_ = reinterpret_cast<const B_eff_t *>(B_s);
     const C_eff_t *C_ = reinterpret_cast<const C_eff_t *>(C);
 
