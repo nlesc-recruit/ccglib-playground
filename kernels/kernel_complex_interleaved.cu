@@ -11,15 +11,15 @@ using A_t = Tin[M_GLOBAL][K_GLOBAL][COMPLEX];
 using B_t = Tin[N_GLOBAL][K_GLOBAL][COMPLEX];
 using C_t = Tout[M_GLOBAL][N_GLOBAL][COMPLEX];
 
-using A_eff_t = Tin[M_GLOBAL][K_GLOBAL * COMPLEX];
-using B_eff_t = Tin[N_GLOBAL * 2][K_GLOBAL * COMPLEX];
+using A_eff_t = Tin[M_PER_BLOCK][K_PER_BUFFER * COMPLEX];
+using B_eff_t = Tin[N_PER_BLOCK * 2][K_PER_BUFFER * COMPLEX];
 using C_eff_t = Tout[M_GLOBAL][N_GLOBAL * COMPLEX];
 
 extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t A, const B_t B) {
   const unsigned blockN = blockIdx.x;
   const unsigned blockM = blockIdx.y;
-  const unsigned warpN = threadIdx.y;
-  const unsigned warpM = threadIdx.z;
+  //   const unsigned warpN = threadIdx.y;
+  //   const unsigned warpM = threadIdx.z;
 
   const unsigned tid = blockDim.x * blockDim.y * threadIdx.z + blockDim.x * threadIdx.y + threadIdx.x;
   const unsigned block_size = blockDim.x * blockDim.y * blockDim.z;
@@ -45,38 +45,38 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
     }
   }
 
-  for (unsigned k_tile = 0; k_tile < TILES_K; k_tile++) {
+  for (unsigned k_start = 0; k_start < K_GLOBAL; k_start += K_PER_BUFFER) {
     for (unsigned i = tid; i < M_PER_BLOCK * K_PER_BUFFER * COMPLEX; i += block_size) {
       const unsigned c = i % COMPLEX;
       const unsigned k = (i / COMPLEX) % K_PER_BUFFER;
       const unsigned m = (i / (COMPLEX * K_PER_BUFFER));
 
-      A_s[m][k][c] = A[block_m_start + m][k][c];
+      A_s[m][k][c] = A[block_m_start + m][k_start + k][c];
     }
 
     for (unsigned i = tid; i < N_PER_BLOCK * K_PER_BUFFER; i += block_size) {
       const unsigned k = i % K_PER_BUFFER;
       const unsigned n = i / K_PER_BUFFER;
 
-      B_s[n][0][k][REAL] = B[block_n_start + n][k][REAL];
-      B_s[n][0][k][IMAG] = -B[block_n_start + n][k][IMAG];
+      B_s[n][0][k][REAL] = B[block_n_start + n][k_start + k][REAL];
+      B_s[n][0][k][IMAG] = -B[block_n_start + n][k_start + k][IMAG];
 
-      B_s[n][1][k][REAL] = B[block_n_start + n][k][IMAG];
-      B_s[n][1][k][IMAG] = B[block_n_start + n][k][REAL];
+      B_s[n][1][k][REAL] = B[block_n_start + n][k_start + k][IMAG];
+      B_s[n][1][k][IMAG] = B[block_n_start + n][k_start + k][REAL];
     }
     __syncthreads();
 
     const A_eff_t *A_ = reinterpret_cast<const A_eff_t *>(A_s);
     const B_eff_t *B_ = reinterpret_cast<const B_eff_t *>(B_s);
 
-    for (unsigned n = 0; n < N_; n += N_WMMA) {
-      for (unsigned m = 0; m < M_; m += M_WMMA) {
-        for (unsigned k = 0; k < K_; k += K_WMMA) {
+    for (unsigned m = 0; m < TILES_M; m++) {
+      for (unsigned n = 0; n < TILES_N; n++) {
+        for (unsigned k = 0; k < K_ / K_WMMA; k++) {
           rocwmma::fragment<rocwmma::matrix_a, M_WMMA, N_WMMA, K_WMMA, Tin, rocwmma::row_major> fragA;
           rocwmma::fragment<rocwmma::matrix_b, M_WMMA, N_WMMA, K_WMMA, Tin, rocwmma::col_major> fragB;
-          rocwmma::load_matrix_sync(fragA, &(*A_)[m][k], K_);
-          rocwmma::load_matrix_sync(fragB, &(*B_)[n][k], K_);
-          rocwmma::mma_sync(fragC[m / M_WMMA][n / N_WMMA], fragA, fragB, fragC[m / M_WMMA][n / N_WMMA]);
+          rocwmma::load_matrix_sync(fragA, &(*A_)[m * M_WMMA][k * K_WMMA], K_);
+          rocwmma::load_matrix_sync(fragB, &(*B_)[n * N_WMMA][k * K_WMMA], K_);
+          rocwmma::mma_sync(fragC[m][n], fragA, fragB, fragC[m][n]);
         }
       }
     }
@@ -85,9 +85,9 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
 
   C_eff_t *C_ = reinterpret_cast<C_eff_t *>(C);
 
-  for (unsigned n = 0; n < N_; n += N_WMMA) {
-    for (unsigned m = 0; m < M_; m += M_WMMA) {
-      rocwmma::store_matrix_sync(&(*C_)[block_m_start + m][block_n_start * COMPLEX + n], fragC[m / M_WMMA][n / N_WMMA],
+  for (unsigned m = 0; m < TILES_M; m++) {
+    for (unsigned n = 0; n < TILES_N; n++) {
+      rocwmma::store_matrix_sync(&(*C_)[block_m_start + m * M_WMMA][block_n_start * COMPLEX + n * N_WMMA], fragC[m][n],
                                  N_GLOBAL * COMPLEX, rocwmma::mem_row_major);
     }
   }

@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
   // const unsigned global_k = 8192;
   const unsigned global_m = 128;
   const unsigned global_n = 128;
-  const unsigned global_k = 16;
+  const unsigned global_k = 64;
   const unsigned batch_size = 1;
   const unsigned COMPLEX = 2;
   const unsigned REAL = 0;
@@ -69,14 +69,12 @@ int main(int argc, char *argv[]) {
   const unsigned N_PER_BLOCK = 64;
   const unsigned M_PER_WARP = 16;
   const unsigned N_PER_WARP = 16;
-  const unsigned K_PER_BUFFER = 16;
+  const unsigned K_PER_BUFFER = 32;
 
   // fixed parameters
   const unsigned M_WMMA = 16;
   const unsigned N_WMMA = 16;
   const unsigned K_WMMA = 16;
-
-  const unsigned TILES_K = ccglib::helper::ceildiv(global_k, K_PER_BUFFER);
 
   dim3 grid{ccglib::helper::ceildiv(global_n, N_PER_BLOCK), ccglib::helper::ceildiv(global_m, M_PER_BLOCK), batch_size};
   dim3 threads{warp_size, ccglib::helper::ceildiv(N_PER_WARP, N_WMMA), ccglib::helper::ceildiv(M_PER_WARP, M_WMMA)};
@@ -101,7 +99,6 @@ int main(int argc, char *argv[]) {
     "-DM_PER_WARP=" + std::to_string(M_PER_WARP),
     "-DN_PER_WARP=" + std::to_string(N_PER_WARP),
     "-DK_PER_BUFFER=" + std::to_string(K_PER_BUFFER),
-    "-DTILES_K=" + std::to_string(TILES_K),
     "-DM_WMMA=" + std::to_string(M_WMMA),
     "-DN_WMMA=" + std::to_string(N_WMMA),
     "-DK_WMMA=" + std::to_string(K_WMMA)
