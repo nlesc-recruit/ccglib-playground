@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
   const unsigned global_m = 128;
   const unsigned global_n = 128;
   const unsigned global_k = 64;
-  const unsigned batch_size = 1;
+  const unsigned batch_size = 2;
   const unsigned COMPLEX = 2;
   const unsigned REAL = 0;
   const unsigned IMAG = 1;
@@ -91,6 +91,7 @@ int main(int argc, char *argv[]) {
 #endif
     "-I" + include_path,
     "-DWARP_SIZE=" + std::to_string(warp_size),
+    "-DBATCH_SIZE=" + std::to_string(batch_size),
     "-DM_GLOBAL=" + std::to_string(global_m) + "UL",
     "-DN_GLOBAL=" + std::to_string(global_n) + "UL",
     "-DK_GLOBAL=" + std::to_string(global_k) + "UL",
@@ -208,15 +209,18 @@ int main(int argc, char *argv[]) {
 
   // Compare pipeline interleaved to new kernel
   unsigned errs = 0;
-  for (unsigned m = 0; m < global_m; m++) {
-    for (unsigned n = 0; n < global_n; n++) {
-      const unsigned idx = n * COMPLEX + m * global_n * COMPLEX;
-      const std::complex<Tout> value{static_cast<Tout *>(h_c)[idx + REAL], static_cast<Tout *>(h_c)[idx + IMAG]};
-      const std::complex<Tout> value_ref{static_cast<Tout *>(h_c_ref)[idx + REAL],
-                                         static_cast<Tout *>(h_c_ref)[idx + IMAG]};
-      const Tout diff = std::max(std::abs(value.real() - value_ref.real()), std::abs(value.imag() - value_ref.imag()));
-      if (diff > .1) {
-        errs++;
+  for (unsigned b = 0; b < batch_size; b++) {
+    for (unsigned m = 0; m < global_m; m++) {
+      for (unsigned n = 0; n < global_n; n++) {
+        const unsigned idx = b * global_m * global_n * COMPLEX + m * global_n * COMPLEX + n * COMPLEX;
+        const std::complex<Tout> value{static_cast<Tout *>(h_c)[idx + REAL], static_cast<Tout *>(h_c)[idx + IMAG]};
+        const std::complex<Tout> value_ref{static_cast<Tout *>(h_c_ref)[idx + REAL],
+                                           static_cast<Tout *>(h_c_ref)[idx + IMAG]};
+        const Tout diff =
+            std::max(std::abs(value.real() - value_ref.real()), std::abs(value.imag() - value_ref.imag()));
+        if (diff > .1) {
+          errs++;
+        }
       }
     }
   }
@@ -231,7 +235,7 @@ int main(int argc, char *argv[]) {
   if (errs > 0) {
     std::cout << std::endl;
     for (unsigned m = 0; m < global_m; m++) {
-      // print only first and last row
+      // print only first and last row of first batch
       if (m != 0 && m != (global_m - 1)) continue;
       for (unsigned n = 0; n < global_n; n++) {
         const unsigned idx = n * COMPLEX + m * global_n * COMPLEX;

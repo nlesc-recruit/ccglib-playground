@@ -7,9 +7,9 @@
 using Tin = half;
 using Tout = float;
 
-using A_t = Tin[M_GLOBAL][K_GLOBAL][COMPLEX];
-using B_t = Tin[N_GLOBAL][K_GLOBAL][COMPLEX];
-using C_t = Tout[M_GLOBAL][N_GLOBAL][COMPLEX];
+using A_t = Tin[BATCH_SIZE][M_GLOBAL][K_GLOBAL][COMPLEX];
+using B_t = Tin[BATCH_SIZE][N_GLOBAL][K_GLOBAL][COMPLEX];
+using C_t = Tout[BATCH_SIZE][M_GLOBAL][N_GLOBAL][COMPLEX];
 
 using A_eff_t = Tin[M_PER_BLOCK][K_PER_BUFFER * COMPLEX];
 using B_eff_t = Tin[N_PER_BLOCK * 2][K_PER_BUFFER * COMPLEX];
@@ -18,6 +18,7 @@ using C_eff_t = Tout[M_GLOBAL][N_GLOBAL * COMPLEX];
 extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t A, const B_t B) {
   const unsigned blockN = blockIdx.x;
   const unsigned blockM = blockIdx.y;
+  const unsigned batch = blockIdx.z;
   //   const unsigned warpN = threadIdx.y;
   //   const unsigned warpM = threadIdx.z;
 
@@ -51,18 +52,18 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
       const unsigned k = (i / COMPLEX) % K_PER_BUFFER;
       const unsigned m = (i / (COMPLEX * K_PER_BUFFER));
 
-      A_s[m][k][c] = A[block_m_start + m][k_start + k][c];
+      A_s[m][k][c] = A[batch][block_m_start + m][k_start + k][c];
     }
 
     for (unsigned i = tid; i < N_PER_BLOCK * K_PER_BUFFER; i += block_size) {
       const unsigned k = i % K_PER_BUFFER;
       const unsigned n = i / K_PER_BUFFER;
 
-      B_s[n][0][k][REAL] = B[block_n_start + n][k_start + k][REAL];
-      B_s[n][0][k][IMAG] = -B[block_n_start + n][k_start + k][IMAG];
+      B_s[n][0][k][REAL] = B[batch][block_n_start + n][k_start + k][REAL];
+      B_s[n][0][k][IMAG] = -B[batch][block_n_start + n][k_start + k][IMAG];
 
-      B_s[n][1][k][REAL] = B[block_n_start + n][k_start + k][IMAG];
-      B_s[n][1][k][IMAG] = B[block_n_start + n][k_start + k][REAL];
+      B_s[n][1][k][REAL] = B[batch][block_n_start + n][k_start + k][IMAG];
+      B_s[n][1][k][IMAG] = B[batch][block_n_start + n][k_start + k][REAL];
     }
     __syncthreads();
 
@@ -83,7 +84,7 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
     __syncthreads();
   }
 
-  C_eff_t *C_ = reinterpret_cast<C_eff_t *>(C);
+  C_eff_t *C_ = reinterpret_cast<C_eff_t *>(&C[batch]);
 
   for (unsigned m = 0; m < TILES_M; m++) {
     for (unsigned n = 0; n < TILES_N; n++) {
