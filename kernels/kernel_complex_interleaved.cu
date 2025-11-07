@@ -1,4 +1,10 @@
+#ifdef __HIP_PLATFORM_AMD__
 #include <rocwmma/rocwmma.hpp>
+namespace wmma = rocwmma;
+#else
+#include <mma.h>
+using namespace nvcuda;
+#endif
 
 #define COMPLEX 2
 #define REAL 0
@@ -41,10 +47,10 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
   const unsigned TILES_M = M_ / M_WMMA;
   const unsigned TILES_N = N_ / N_WMMA;
 
-  rocwmma::fragment<rocwmma::accumulator, M_WMMA, N_WMMA, K_WMMA, Tout> fragC[TILES_M][TILES_N];
+  wmma::fragment<wmma::accumulator, M_WMMA, N_WMMA, K_WMMA, Tout> fragC[TILES_M][TILES_N];
   for (unsigned m = 0; m < TILES_M; m++) {
     for (unsigned n = 0; n < TILES_N; n++) {
-      rocwmma::fill_fragment(fragC[m][n], static_cast<Tout>(0));
+      wmma::fill_fragment(fragC[m][n], static_cast<Tout>(0));
     }
   }
 
@@ -75,11 +81,11 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
     for (unsigned m = 0; m < TILES_M; m++) {
       for (unsigned n = 0; n < TILES_N; n++) {
         for (unsigned k = 0; k < K_ / K_WMMA; k++) {
-          rocwmma::fragment<rocwmma::matrix_a, M_WMMA, N_WMMA, K_WMMA, Tin, rocwmma::row_major> fragA;
-          rocwmma::fragment<rocwmma::matrix_b, M_WMMA, N_WMMA, K_WMMA, Tin, rocwmma::col_major> fragB;
-          rocwmma::load_matrix_sync(fragA, &(*A_)[warp_m_start + m * M_WMMA][k * K_WMMA], K_);
-          rocwmma::load_matrix_sync(fragB, &(*B_)[(warp_n_start * 2) + n * N_WMMA][k * K_WMMA], K_);
-          rocwmma::mma_sync(fragC[m][n], fragA, fragB, fragC[m][n]);
+          wmma::fragment<rocwmma::matrix_a, M_WMMA, N_WMMA, K_WMMA, Tin, wmma::row_major> fragA;
+          wmma::fragment<rocwmma::matrix_b, M_WMMA, N_WMMA, K_WMMA, Tin, wmma::col_major> fragB;
+          wmma::load_matrix_sync(fragA, &(*A_)[warp_m_start + m * M_WMMA][k * K_WMMA], K_);
+          wmma::load_matrix_sync(fragB, &(*B_)[(warp_n_start * 2) + n * N_WMMA][k * K_WMMA], K_);
+          wmma::mma_sync(fragC[m][n], fragA, fragB, fragC[m][n]);
         }
       }
     }
@@ -90,9 +96,9 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
 
   for (unsigned m = 0; m < TILES_M; m++) {
     for (unsigned n = 0; n < TILES_N; n++) {
-      rocwmma::store_matrix_sync(
+      wmma::store_matrix_sync(
           &(*C_)[block_m_start + warp_m_start + m * M_WMMA][(block_n_start + warp_n_start) * COMPLEX + n * N_WMMA],
-          fragC[m][n], N_GLOBAL * COMPLEX, rocwmma::mem_row_major);
+          fragC[m][n], N_GLOBAL * COMPLEX, wmma::mem_row_major);
     }
   }
 }
