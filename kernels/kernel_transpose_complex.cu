@@ -1,5 +1,3 @@
-#pragma once
-
 extern "C" __global__ void transpose(const float2* __restrict__ A, float2* __restrict__ B, unsigned N, unsigned M) {
   constexpr int TILE_DIM = 32;
   constexpr int BLOCK_ROWS = 8;
