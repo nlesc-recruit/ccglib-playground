@@ -1,14 +1,15 @@
-#include <ccglib/common/helper.h>
-
-#include <ccglib/ccglib.hpp>
 #include <complex>
 #include <cstddef>
 #include <functional>
 #include <iostream>
 #include <random>
 
+// clang-format off
+#include <ccglib/ccglib.hpp>
+#include <ccglib/common/helper.h>
 #include <cudawrappers/cu.hpp>
 #include <cudawrappers/nvrtc.hpp>
+// clang-format on
 
 #include "kernel_complex_interleaved.cu.o.h"
 
