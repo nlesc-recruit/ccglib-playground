@@ -53,13 +53,11 @@ if __name__ == '__main__':
     # most 1024 / warp_size
     tune_params = {
         "block_size_x": [warp_size],  # must be warp size
-        "block_size_y": [1],
-        "block_size_z": [1],
-        # "block_size_y": [2**i for i in range(0, 6) if warp_size * 2**i <= 1024],
-        # "block_size_z": [2**i for i in range(0, 6) if warp_size * 2**i <= 1024],
-        "M_PER_BLOCK": [2**i for i in range(4, 9)],  # minimum m_per_wmma
-        "N_PER_BLOCK": [2**i for i in range(4, 9)],  # minimum n_per_wmma
-        "K_PER_BUFFER": [2**i for i in range(4, 9)], # minimum k_per_wmma
+        "block_size_y": [2**i for i in range(0, 6) if warp_size * 2**i <= 1024],
+        "block_size_z": [2**i for i in range(0, 6) if warp_size * 2**i <= 1024],
+        "M_PER_BLOCK": [2**i for i in range(4, 9) if 2**i <= m_global],  # minimum m_per_wmma
+        "N_PER_BLOCK": [2**i for i in range(4, 9) if 2**i <= n_global],  # minimum n_per_wmma
+        "K_PER_BUFFER": [2**i for i in range(4, 9) if 2**i <= k_global], # minimum k_per_wmma
     }
 
     defines = {key: key for key in tune_params}
@@ -69,8 +67,8 @@ if __name__ == '__main__':
     defines["M_GLOBAL"] = m_global
     defines["N_GLOBAL"] = n_global
     defines["K_GLOBAL"] = k_global
-    #defines["N_PER_WARP"] = lambda p: int(p["N_PER_BLOCK"] // p["block_size_y"])
-    #defines["M_PER_WARP"] = lambda p: int(p["M_PER_BLOCK"] // p["block_size_z"])
+    defines["M_PER_WARP"] = lambda p: int(p["M_PER_BLOCK"] // p["block_size_z"])
+    defines["N_PER_WARP"] = lambda p: int(p["N_PER_BLOCK"] // p["block_size_y"])
     defines["WARP_SIZE"] = warp_size
     defines["M_WMMA"] = 16
     defines["N_WMMA"] = 16
@@ -95,13 +93,10 @@ if __name__ == '__main__':
     }
 
     metrics = {
-        "TFLOPS": lambda p: 8e-9 * m_global * n_global * k_global * batch_size / p["time"],
-        # "N_PER_WARP": lambda p: p["N_PER_BLOCK"] // p["block_size_y"],
-        # "M_PER_WARP": lambda p: p["M_PER_BLOCK"] // p["block_size_z"]
+        "M_PER_WARP": lambda p: p["M_PER_BLOCK"] // p["block_size_z"],
+        "N_PER_WARP": lambda p: p["N_PER_BLOCK"] // p["block_size_y"],
+        "TFLOPS": lambda p: 8e-9 * batch_size * m_global * n_global * k_global / p["time"]
     }
-
-    with open(f"../kernels/{kernel_file}", "r") as fp:
-        kernel_source = fp.read()
 
     compiler_options = ["-std=c++17"]
 
@@ -128,7 +123,7 @@ if __name__ == '__main__':
     if args.overwrite and os.path.exists(filename_cache):
             os.remove(filename_cache)
 
-    kt.tune_kernel(kernel_name, kernel_source, problem_size, arguments, tune_params,
+    kt.tune_kernel(kernel_name, f"../kernels/{kernel_file}", problem_size, arguments, tune_params,
                    restrictions=restrict,
                    compiler_options=compiler_options,
                    # strategy="dual_annealing", strategy_options=dict(max_fevals=200),
