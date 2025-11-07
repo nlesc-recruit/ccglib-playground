@@ -8,3 +8,5 @@ repos:
     hooks:
       - id: cmake-format
       - id: cmake-lint
+        args:
+        - "--ignore=c0307"
