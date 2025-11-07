@@ -81,8 +81,8 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
     for (unsigned m = 0; m < TILES_M; m++) {
       for (unsigned n = 0; n < TILES_N; n++) {
         for (unsigned k = 0; k < K_ / K_WMMA; k++) {
-          wmma::fragment<rocwmma::matrix_a, M_WMMA, N_WMMA, K_WMMA, Tin, wmma::row_major> fragA;
-          wmma::fragment<rocwmma::matrix_b, M_WMMA, N_WMMA, K_WMMA, Tin, wmma::col_major> fragB;
+          wmma::fragment<wmma::matrix_a, M_WMMA, N_WMMA, K_WMMA, Tin, wmma::row_major> fragA;
+          wmma::fragment<wmma::matrix_b, M_WMMA, N_WMMA, K_WMMA, Tin, wmma::col_major> fragB;
           wmma::load_matrix_sync(fragA, &(*A_)[warp_m_start + m * M_WMMA][k * K_WMMA], K_);
           wmma::load_matrix_sync(fragB, &(*B_)[(warp_n_start * 2) + n * N_WMMA][k * K_WMMA], K_);
           wmma::mma_sync(fragC[m][n], fragA, fragB, fragC[m][n]);

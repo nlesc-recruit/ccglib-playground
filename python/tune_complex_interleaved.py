@@ -107,13 +107,25 @@ if __name__ == '__main__':
         for i in range(len(param_names)):
             p[param_names[i]] = args[i]
 
+        p["M_WMMA"] = defines["M_WMMA"]
+        p["N_WMMA"] = defines["N_WMMA"]
+
         # __shared__ Tin A_s[M_PER_BLOCK][K_PER_BUFFER][COMPLEX];
         # __shared__ Tin B_s[N_PER_BLOCK][2][K_PER_BUFFER][COMPLEX];
         a_size = p["M_PER_BLOCK"] * p["K_PER_BUFFER"] * 2 * np.dtype(dtype_ab).itemsize
         b_size = p["N_PER_BLOCK"] * 2 * p["K_PER_BUFFER"] * 2 * np.dtype(dtype_ab).itemsize
+
+        m_per_warp = p["M_PER_BLOCK"] // p["block_size_z"]
+        n_per_warp = p["N_PER_BLOCK"] // p["block_size_y"]
         valid = (
             a_size + b_size <= smem_size
             and p["block_size_x"] * p["block_size_y"] * p["block_size_z"] <= 1024
+            and m_per_warp != 0
+            and n_per_warp != 0
+            and p["M_PER_BLOCK"] % m_per_warp == 0
+            and p["N_PER_BLOCK"] % n_per_warp == 0
+            and m_per_warp % p["M_WMMA"] == 0
+            and (n_per_warp * 2) % p["N_WMMA"] == 0
         )
         return valid
 
