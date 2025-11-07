@@ -32,10 +32,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(ccglib)
 
 add_executable(complex_interleaved src/complex_interleaved.cpp)
-target_link_libraries(complex_interleaved PUBLIC ccglib cudawrappers::cu cudawrappers::nvrtc)
+target_link_libraries(complex_interleaved PUBLIC ccglib cudawrappers::cu
+                                                 cudawrappers::nvrtc)
 target_embed_source(complex_interleaved kernels/kernel_complex_interleaved.cu)
-target_include_directories(complex_interleaved PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/kernels)
+target_include_directories(complex_interleaved
+                           PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/kernels)
 
 if(${USE_HIP})
-  set_source_files_properties(src/complex_interleaved.cpp PROPERTIES LANGUAGE HIP)
+  set_source_files_properties(src/complex_interleaved.cpp PROPERTIES LANGUAGE
+                                                                     HIP)
 endif()
