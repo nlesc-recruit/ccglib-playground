@@ -15,23 +15,18 @@ using Input = T[BATCH_SIZE][COMPLEX][M_GLOBAL][N_GLOBAL];
 #elif defined(INPUT_COMPLEX_INTERLEAVED)
 using Input = T[BATCH_SIZE][M_GLOBAL][N_GLOBAL][COMPLEX];
 #endif
-using Output =
-    T[BATCH_SIZE][M_GLOBAL_PADDED / M_CHUNK][N_GLOBAL_PADDED / N_CHUNK][COMPLEX]
-     [M_CHUNK][N_CHUNK];
+using Output = T[BATCH_SIZE][M_GLOBAL_PADDED / M_CHUNK][N_GLOBAL_PADDED / N_CHUNK][COMPLEX][M_CHUNK][N_CHUNK];
 
 extern "C" {
 __global__ void transpose_original(Output out, const Input in) {
   const size_t idx_B = blockIdx.z;
-  const size_t idx_N =
-      threadIdx.x + blockIdx.x * static_cast<size_t>(blockDim.x);
-  const size_t idx_M =
-      threadIdx.y + blockIdx.y * static_cast<size_t>(blockDim.y);
+  const size_t idx_N = threadIdx.x + blockIdx.x * static_cast<size_t>(blockDim.x);
+  const size_t idx_M = threadIdx.y + blockIdx.y * static_cast<size_t>(blockDim.y);
 
   static_assert(M_GLOBAL_PADDED % M_CHUNK == 0);
   static_assert(N_GLOBAL_PADDED % N_CHUNK == 0);
 
-  if (idx_B < BATCH_SIZE && idx_M < M_GLOBAL_PADDED &&
-      idx_N < N_GLOBAL_PADDED) {
+  if (idx_B < BATCH_SIZE && idx_M < M_GLOBAL_PADDED && idx_N < N_GLOBAL_PADDED) {
     size_t b = idx_B;
     size_t m = idx_M / M_CHUNK;
     size_t m_c = idx_M % M_CHUNK;
