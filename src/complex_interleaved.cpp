@@ -67,8 +67,8 @@ int main(int argc, char *argv[]) {
   // tuning parameters
   const unsigned M_PER_BLOCK = 64;
   const unsigned N_PER_BLOCK = 64;
-  const unsigned M_PER_WARP = 16;
-  const unsigned N_PER_WARP = 16;
+  const unsigned M_PER_WARP = 32;
+  const unsigned N_PER_WARP = 32;
   const unsigned K_PER_BUFFER = 32;
 
   // fixed parameters
@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
   const unsigned K_WMMA = 16;
 
   dim3 grid{ccglib::helper::ceildiv(global_n, N_PER_BLOCK), ccglib::helper::ceildiv(global_m, M_PER_BLOCK), batch_size};
-  dim3 threads{warp_size, ccglib::helper::ceildiv(N_PER_WARP, N_WMMA), ccglib::helper::ceildiv(M_PER_WARP, M_WMMA)};
+  dim3 threads{warp_size, N_PER_BLOCK / N_PER_WARP, M_PER_BLOCK / M_PER_WARP};
 
   std::cout << "block size: " << threads.x << " " << threads.y << " " << threads.z << std::endl;
   std::cout << "grid size: " << grid.x << " " << grid.y << " " << grid.z << std::endl;

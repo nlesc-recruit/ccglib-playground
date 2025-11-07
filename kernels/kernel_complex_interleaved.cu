@@ -19,21 +19,23 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
   const unsigned blockN = blockIdx.x;
   const unsigned blockM = blockIdx.y;
   const unsigned batch = blockIdx.z;
-  //   const unsigned warpN = threadIdx.y;
-  //   const unsigned warpM = threadIdx.z;
+  const unsigned warpN = threadIdx.y;
+  const unsigned warpM = threadIdx.z;
 
   const unsigned tid = blockDim.x * blockDim.y * threadIdx.z + blockDim.x * threadIdx.y + threadIdx.x;
   const unsigned block_size = blockDim.x * blockDim.y * blockDim.z;
 
   const unsigned block_m_start = blockM * M_PER_BLOCK;
   const unsigned block_n_start = blockN * N_PER_BLOCK;
+  const unsigned warp_m_start = warpM * M_PER_WARP;
+  const unsigned warp_n_start = warpN * N_PER_WARP;
 
   __shared__ Tin A_s[M_PER_BLOCK][K_PER_BUFFER][COMPLEX];
   __shared__ Tin B_s[N_PER_BLOCK][2][K_PER_BUFFER][COMPLEX];
 
   // for tensor core operations, we pretend we do a matmul with N_ = N * 2 and K_ = K * COMPLEX;
-  const unsigned M_ = M_PER_BLOCK;
-  const unsigned N_ = N_PER_BLOCK * 2;
+  const unsigned M_ = M_PER_WARP;
+  const unsigned N_ = N_PER_WARP * 2;
   const unsigned K_ = K_PER_BUFFER * COMPLEX;
 
   const unsigned TILES_M = M_ / M_WMMA;
@@ -75,8 +77,8 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
         for (unsigned k = 0; k < K_ / K_WMMA; k++) {
           rocwmma::fragment<rocwmma::matrix_a, M_WMMA, N_WMMA, K_WMMA, Tin, rocwmma::row_major> fragA;
           rocwmma::fragment<rocwmma::matrix_b, M_WMMA, N_WMMA, K_WMMA, Tin, rocwmma::col_major> fragB;
-          rocwmma::load_matrix_sync(fragA, &(*A_)[m * M_WMMA][k * K_WMMA], K_);
-          rocwmma::load_matrix_sync(fragB, &(*B_)[n * N_WMMA][k * K_WMMA], K_);
+          rocwmma::load_matrix_sync(fragA, &(*A_)[warp_m_start + m * M_WMMA][k * K_WMMA], K_);
+          rocwmma::load_matrix_sync(fragB, &(*B_)[(warp_n_start * 2) + n * N_WMMA][k * K_WMMA], K_);
           rocwmma::mma_sync(fragC[m][n], fragA, fragB, fragC[m][n]);
         }
       }
@@ -88,8 +90,9 @@ extern "C" __global__ void wmma_complex_gemm_basic_interleaved(C_t C, const A_t 
 
   for (unsigned m = 0; m < TILES_M; m++) {
     for (unsigned n = 0; n < TILES_N; n++) {
-      rocwmma::store_matrix_sync(&(*C_)[block_m_start + m * M_WMMA][block_n_start * COMPLEX + n * N_WMMA], fragC[m][n],
-                                 N_GLOBAL * COMPLEX, rocwmma::mem_row_major);
+      rocwmma::store_matrix_sync(
+          &(*C_)[block_m_start + warp_m_start + m * M_WMMA][(block_n_start + warp_n_start) * COMPLEX + n * N_WMMA],
+          fragC[m][n], N_GLOBAL * COMPLEX, rocwmma::mem_row_major);
     }
   }
 }
